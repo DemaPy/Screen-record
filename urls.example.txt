@@ -1,0 +1,4 @@
+# One URL per line. Blank lines and lines starting with # are ignored.
+https://example.com
+https://news.ycombinator.com
+https://en.wikipedia.org/wiki/Rust_(programming_language)
