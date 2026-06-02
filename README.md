@@ -64,3 +64,18 @@ Output (default `./recordings/`):
 Full screen, downscaled to 480p (`scale=-2:480`, aspect preserved), encoded with
 the Mac hardware HEVC encoder (`hevc_videotoolbox`, tagged `hvc1` so QuickTime/
 Safari play it). Small files and low CPU for long captures of a 4K display.
+
+## Documentation
+
+A full **Obsidian-style docs vault** lives in [`docs/`](docs/) — open that folder
+as an Obsidian vault for linked navigation and diagrams. Start at
+`docs/Recorder - Home.md`:
+
+- **Setup and Onboarding** — get running in ~15 min (read this first)
+- **Architecture** — modules and how they fit
+- **Data Flow** — what happens, step by step
+- **Tech Stack** — every crate/tool and why
+- **Decisions (ADR)** — the non-obvious design choices
+- **Module Reference** — file-by-file code map
+- **Gotchas and Edge Cases** — the traps (Screen Recording permission, etc.)
+- **Glossary** — the core terms
