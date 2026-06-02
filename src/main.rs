@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
 
     // 1. Prerequisites.
     prereqs::ensure_ffmpeg().await?;
-    let chrome_path = prereqs::ensure_chromium().await?;
+    let chrome_path = prereqs::ensure_browser().await?;
 
     // 2. Screen capture device.
     let device_index = match cfg.device_index {

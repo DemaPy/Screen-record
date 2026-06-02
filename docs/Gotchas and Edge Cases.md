@@ -16,6 +16,13 @@ Back to [[Recorder - Home]]. Real traps found while building/testing this. Each 
 - **Fix:** System Settings → Privacy & Security → Screen Recording → enable the host app → reopen it.
 - **How we handle it:** [[Module Reference#ffmpeg.rs|wait_until_ready]] returns `false` when no frames flow → that URL **fails fast** with an actionable message instead of silently writing a black file ([[Decisions (ADR)#ADR-11 Capture readiness via -progress pipe:1]]).
 
+## Automation detected — infobar / captcha
+- **Symptom:** the **"Chrome is being controlled by automated test software"** infobar shows in recordings; sites throw "verify you're a person" captchas (esp. Google/YouTube).
+- **Cause:** chromiumoxide's `DEFAULT_ARGS` add `--enable-automation` (infobar + `navigator.webdriver = true`) and `--enable-blink-features=IdleDetection`.
+- **Fix (three layers):** drop those flags via `disable_default_args()` + curated subset; hide `navigator.webdriver` via `addScriptToEvaluateOnNewDocument` (`--disable-blink-features=AutomationControlled` alone is **not** enough on Chrome 148 — verified); prefer **real Google Chrome**. Full rationale: [[Decisions (ADR)#ADR-14 De-automate Chrome (avoid bot detection)]].
+- **Gotcha within the gotcha:** don't pile on `navigator.plugins`/`languages`/WebGL fakes — in headful real Chrome those are authentic and faking them is *more* detectable.
+- **Residual:** Google detection is reputation-based — a fresh [[Decisions (ADR)#ADR-9 Ephemeral per-run profile|ephemeral profile]] still looks new. **Log in manually** ([[Decisions (ADR)#ADR-5 Single reused page + manual login]]); a trusted session is what actually suppresses captchas. No flag set guarantees zero captchas on Google.
+
 ## Readiness detection: the carriage-return trap
 - **Symptom (during dev):** every recording falsely reported "no frames," even though FFmpeg was clearly capturing.
 - **Cause:** FFmpeg's **stderr** progress stats (`frame= … fps= …`) are printed with **carriage returns (`\r`)**, not newlines. A line-by-line reader (`\n`) never sees them → readiness times out.

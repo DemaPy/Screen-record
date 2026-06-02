@@ -12,6 +12,46 @@ use tracing::{info, warn};
 
 use crate::error::SetupError;
 
+/// chromiumoxide's built-in `DEFAULT_ARGS`, minus the two automation tells:
+/// `--enable-automation` (shows the "controlled by automated test software"
+/// infobar and sets `navigator.webdriver = true`) and
+/// `--enable-blink-features=IdleDetection`. We disable the crate's defaults and
+/// re-add this curated subset so the browser doesn't advertise that it's
+/// script-controlled. CDP still works — that rides on `--remote-debugging-port`,
+/// which is added separately. See also the `webdriver` patch in `launch`.
+const CURATED_DEFAULT_ARGS: &[&str] = &[
+    "--disable-background-networking",
+    "--enable-features=NetworkService,NetworkServiceInProcess",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-breakpad",
+    "--disable-client-side-phishing-detection",
+    "--disable-component-extensions-with-background-pages",
+    "--disable-default-apps",
+    "--disable-dev-shm-usage",
+    "--disable-features=TranslateUI",
+    "--disable-hang-monitor",
+    "--disable-ipc-flooding-protection",
+    "--disable-popup-blocking",
+    "--disable-prompt-on-repost",
+    "--disable-renderer-backgrounding",
+    "--disable-sync",
+    "--force-color-profile=srgb",
+    "--metrics-recording-only",
+    "--no-first-run",
+    "--password-store=basic",
+    "--use-mock-keychain",
+    "--lang=en_US",
+];
+
+/// Injected into every new document. `--disable-blink-features=Automation`
+/// `Controlled` is *not* sufficient on current Chrome (verified: `navigator.`
+/// `webdriver` stays `true`), so we additionally hide the property here. Applied
+/// via `addScriptToEvaluateOnNewDocument`, it survives navigations, so a single
+/// injection covers every URL in the queue on our one reused page.
+const WEBDRIVER_PATCH: &str =
+    "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });";
+
 pub struct BrowserSession {
     /// Held to keep the CDP connection alive; dropping it closes the browser.
     pub browser: Browser,
@@ -44,15 +84,21 @@ impl BrowserSession {
         let profile_dir =
             std::env::temp_dir().join(format!("recorder-profile-{}", std::process::id()));
 
-        let config = BrowserConfig::builder()
+        // Disable chromiumoxide's DEFAULT_ARGS (which include the automation
+        // tells) and re-add a curated subset — see CURATED_DEFAULT_ARGS.
+        let mut builder = BrowserConfig::builder()
             .chrome_executable(chrome_path)
             .user_data_dir(&profile_dir)
             .with_head()
+            .disable_default_args();
+        for arg in CURATED_DEFAULT_ARGS {
+            builder = builder.arg(*arg);
+        }
+        let config = builder
             // Fill the captured display. 480p output is only legible because the
             // maximized window covers the frame — do not run windowed.
             .arg("--start-maximized")
             .arg("--window-position=0,0")
-            .arg("--no-first-run")
             .arg("--no-default-browser-check")
             .arg("--disable-session-crashed-bubble")
             .arg("--disable-infobars")
@@ -79,6 +125,15 @@ impl BrowserSession {
             .new_page("about:blank")
             .await
             .map_err(|e| SetupError::BrowserLaunch(e.to_string()))?;
+
+        // Hide the `navigator.webdriver` automation tell on every document.
+        use chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams;
+        if let Err(e) = page
+            .execute(AddScriptToEvaluateOnNewDocumentParams::new(WEBDRIVER_PATCH))
+            .await
+        {
+            warn!("could not install webdriver patch: {e}");
+        }
 
         let session = Self {
             browser,

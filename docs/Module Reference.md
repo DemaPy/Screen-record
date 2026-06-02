@@ -32,6 +32,8 @@ Back to [[Recorder - Home]]. File-by-file map of `src/`. Pairs with [[Architectu
 **Role:** make sure tools exist before we start.
 **Key:**
 - `ensure_ffmpeg()` → `which ffmpeg`; else `brew install ffmpeg`; else `SetupError::BrewMissing`.
+- `find_installed_chrome()` → first existing path in `INSTALLED_CHROME_PATHS` (real Google Chrome > Beta > installed Chromium), else `None`.
+- `ensure_browser()` → **prefer installed Chrome** (better against bot detection — [[Decisions (ADR)#ADR-14 De-automate Chrome (avoid bot detection)]]) **only if no personal Chrome is running** (`personal_chrome_running()` via `pgrep`); else fall back to `ensure_chromium()` to avoid foregrounding the user's own windows.
 - `ensure_chromium()` → `chromiumoxide` `BrowserFetcher` downloads a pinned Chromium into `dirs::cache_dir()/recorder/chromium`; returns the executable path. Idempotent (cached).
 **Related:** [[Decisions (ADR)#ADR-12 Auto-install prerequisites]].
 
@@ -51,7 +53,7 @@ Back to [[Recorder - Home]]. File-by-file map of `src/`. Pairs with [[Architectu
 ## browser.rs
 **Role:** the browser session (owns Chromium).
 **Key type:** `BrowserSession { browser, page, app_bundle, profile_dir, handler }`.
-- `launch(chrome_path)` → headful Chromium, `--start-maximized`, **ephemeral `user_data_dir`**, `viewport(None)`; spawns the CDP `Handler` task; opens one reusable `about:blank` page; calls `maximize()`.
+- `launch(chrome_path)` → headful Chrome, `--start-maximized`, **ephemeral `user_data_dir`**, `viewport(None)`; **de-automated** (`disable_default_args()` + `CURATED_DEFAULT_ARGS`, no `--enable-automation`); spawns the CDP `Handler` task; opens one reusable `about:blank` page; **injects `WEBDRIVER_PATCH`** via `addScriptToEvaluateOnNewDocument`; calls `maximize()`. See [[Decisions (ADR)#ADR-14 De-automate Chrome (avoid bot detection)]].
 - `maximize()` → reads `window.screen.avail*`, sets explicit CDP window **bounds** (reliable on macOS). [[Decisions (ADR)#ADR-6 Reliable maximize via window bounds]].
 - `bring_to_front()` → `Page.bringToFront` **and** `open -a <Chromium.app>`. [[Decisions (ADR)#ADR-10 Foreground via open -a]].
 - `close()` → close browser, abort handler, delete the ephemeral profile.

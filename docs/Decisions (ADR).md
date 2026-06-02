@@ -69,6 +69,15 @@ Back to [[Recorder - Home]]. Lightweight Architecture Decision Records — the *
 - **Decision:** Auto-`brew install ffmpeg`; auto-download Chromium via chromiumoxide's fetcher (cached).
 - **Consequence:** Near-zero setup. Cost: first run downloads Chromium (~slow once). Homebrew is still required for ffmpeg.
 
+## ADR-14 De-automate Chrome (avoid bot detection)
+- **Context:** Sites (notably Google/YouTube) detected automation: the **"Chrome is being controlled by automated test software" infobar** appeared in-frame, and pages threw "prove you're a person" captchas. Two root causes, both from chromiumoxide's `DEFAULT_ARGS`: `--enable-automation` (infobar + `navigator.webdriver = true`) and `--enable-blink-features=IdleDetection`.
+- **Decision — three measured, minimal layers** (validated empirically, not theorized):
+  1. **Drop the automation flags.** `disable_default_args()` then re-add a **curated subset** without those two — `CURATED_DEFAULT_ARGS` in [[Module Reference#browser.rs]]. (CDP still works: it rides on `--remote-debugging-port`, added separately.) Kills the infobar.
+  2. **Hide `navigator.webdriver`.** `--disable-blink-features=AutomationControlled` is **not** enough on Chrome 148 (verified: webdriver stayed `true`). So we inject `webdriver => undefined` via `addScriptToEvaluateOnNewDocument` — one injection covers all URLs ([[Decisions (ADR)#ADR-5 Single reused page + manual login|single reused page]]).
+  3. **Prefer real Google Chrome** over fetched Chromium ([[Decisions (ADR)#ADR-12 Auto-install prerequisites|ensure_browser]]): genuine "Google Chrome" UA brand, codecs, Widevine — far less suspicious to Google. **Safety guard:** only when no personal Chrome is *already running* — real Chrome shares its `.app` bundle with the user's everyday browser, and [[Decisions (ADR)#ADR-10 Foreground via open -a|`open -a`]] would otherwise foreground (and film) their personal windows. If personal Chrome is up, we fall back to the uniquely-bundled fetched Chromium and warn; quit Chrome to get the anti-detection benefit.
+- **Deliberately NOT done:** faking `navigator.plugins`/`languages`/`window.chrome`/WebGL. Those are *headless* stealth tricks; in **headful real Chrome** those values are already authentic, so faking them *adds* detectable inconsistencies. We patch only the one value (`webdriver`) that is genuinely a lie.
+- **Consequence:** infobar gone; `navigator.webdriver` reads `undefined`; UA/brands authentic. **Honest limitation:** Google's detection is reputation-based too — a zero-history ephemeral profile ([[Decisions (ADR)#ADR-9 Ephemeral per-run profile]]) still looks fresh, so the **manual logged-in session** does the heavy lifting against captchas. No flag set *guarantees* zero captchas on Google. See [[Gotchas and Edge Cases#Automation detected — infobar / captcha]].
+
 ## ADR-13 Sequential queue + per-URL failure recovery
 - **Context:** 100+ URLs; one bad page shouldn't sink the batch. Parallel screen-capture of one display is meaningless.
 - **Decision:** Process **sequentially**; wrap each URL so failures capture a screenshot + logs and the loop continues. Write `report.json` after every URL.
